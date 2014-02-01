@@ -1,0 +1,18 @@
+##############################################################
+
+luminardo_opt.name=Luminrdo 1284p 10MHz
+luminardo_opt.upload.protocol=arduino
+luminardo_opt.upload.maximum_size=130048
+luminardo_opt.upload.speed=57600
+luminardo_opt.bootloader.low_fuses=0xf7
+luminardo_opt.bootloader.high_fuses=0xdc
+luminardo_opt.bootloader.extended_fuses=0xfd
+luminardo_opt.bootloader.path=standard
+luminardo_opt.bootloader.file=ATmegaBOOT_1284P.hex
+luminardo_opt.bootloader.unlock_bits=0x3F
+luminardo_opt.bootloader.lock_bits=0x0F
+luminardo_opt.build.mcu=atmega1284p
+luminardo_opt.build.f_cpu=10000000L
+luminardo_opt.build.core=standard
+luminardo_opt.build.variant=standard
+
