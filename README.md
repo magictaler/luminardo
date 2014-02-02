@@ -11,7 +11,7 @@ An open source Arduino-like hardware project with modular architecture and compa
 - Single (either 5VDC or 12VDC) power supply;
 - Lithium battery bucked up RTC;
 - 1 Wire temperature sensor (with capability to connect more than one);
-- USB Host functionality;
+- USB Host functionality*;
 - USB-to-Serial interface for progamming and debugging;
 - 128 kb of program memory, 3.3V internal supply and logic levels;
 - 5V tolerant ISP header; 
@@ -19,5 +19,7 @@ An open source Arduino-like hardware project with modular architecture and compa
 - PIR sensor;
 
 - Integration with Arduino IDE;
+
+* Based on awesome "Revision 2.0 of USB Host Library for Arduino" (thank you guys!)
 
 for more information please visit http://luminardo.net and http://magictale.com
