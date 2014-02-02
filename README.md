@@ -1,4 +1,4 @@
-luminardo
+Luminardo
 =========
 
 An open source Arduino-like hardware project with modular architecture and compact dimentions with the following features in base configuration:
