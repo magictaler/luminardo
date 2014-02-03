@@ -17,9 +17,8 @@ An open source Arduino-like hardware project with modular architecture and compa
 - 5V tolerant ISP header; 
 - I2C, secondary UART, secondary SPI for future extentions;
 - PIR sensor;
-
 - Integration with Arduino IDE;
 
-* Based on awesome "Revision 2.0 of USB Host Library for Arduino" (thank you guys!)
+* Firmware is tightly intergared with an awesome "Revision 2.0 of USB Host Library for Arduino" (thank you guys!)
 
 for more information please visit http://luminardo.net and http://magictale.com
