@@ -1,6 +1,6 @@
 ##############################################################
 
-luminardo_opt.name=Luminrdo 1284p 10MHz
+luminardo_opt.name=Luminardo 1284p 10MHz
 luminardo_opt.upload.protocol=arduino
 luminardo_opt.upload.maximum_size=130048
 luminardo_opt.upload.speed=57600
