@@ -1,0 +1,25 @@
+menu.cpu=Processor
+
+##############################################################
+
+luminardo.name=Luminardo 1284p 10MHz
+
+luminardo.upload.tool=avrdude
+luminardo.upload.protocol=arduino
+luminardo.upload.maximum_size=130048
+luminardo.upload.speed=57600
+
+luminardo.bootloader.tool=avrdude
+luminardo.bootloader.low_fuses=0xf7
+luminardo.bootloader.high_fuses=0xdc
+luminardo.bootloader.extended_fuses=0xfd
+luminardo.bootloader.file=standard/ATmegaBOOT_1284P.hex
+luminardo.bootloader.unlock_bits=0x3F
+luminardo.bootloader.lock_bits=0x0F
+
+luminardo.build.mcu=atmega1284p
+luminardo.build.f_cpu=10000000L
+luminardo.build.core=standard
+luminardo.build.variant=standard
+luminardo.build.board=LUMINARDO
+
