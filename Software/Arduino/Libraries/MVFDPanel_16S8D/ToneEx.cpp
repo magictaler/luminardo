@@ -160,6 +160,10 @@ void ToneEx::tone(unsigned int frequency, unsigned long duration)
 
   _timer = toneBegin();
 
+//Serial.print(F("toneBegin.timer "));
+//Serial.print(_timer, DEC);
+
+
   if (_timer >= 0)
   {
     // Set the pinMode as OUTPUT
@@ -214,6 +218,7 @@ void ToneEx::tone(unsigned int frequency, unsigned long duration)
       else
 #endif
 #if defined(TCCR2B)
+      if (_timer == 2)
       {
         TCCR2B = prescalarbits;
       }
@@ -354,6 +359,9 @@ void ToneEx::disableTimer(uint8_t _timer)
 
     case 2:
       #if defined(TIMSK2) && defined(OCIE2A)
+
+Serial.print(F("OCIE2A disabled"));
+
         bitWrite(TIMSK2, OCIE2A, 0); // disable interrupt
       #endif
       #if defined(TCCR2A) && defined(WGM20)
@@ -365,6 +373,7 @@ void ToneEx::disableTimer(uint8_t _timer)
       #if defined(OCR2A)
         OCR2A = 0;
       #endif
+
       break;
 
 #if defined(TIMSK3)
@@ -445,7 +454,7 @@ ISR(TIMER1_COMPA_vect)
 }
 #endif
 
-ISR(TIMER2_COMPA_vect)
+/*ISR(TIMER2_COMPA_vect)
 {
 
   if (timer2_toggle_count != 0)
@@ -462,23 +471,26 @@ ISR(TIMER2_COMPA_vect)
     // timer gets initialized next time we call tone().
     // XXX: this assumes timer 2 is always the first one used.
 
-    if (Tone.isPlaying())
-    {
-      if (!Tone.pushNextNote())
-      {
-          Tone.abortPlay();
-      }
-    }else 
-      Tone.noTone();
-//    disableTimer(2);
+//    if (Tone.isPlaying())
+//    {
+//      if (!Tone.pushNextNote())
+//      {
+//          Tone.abortPlay();
+//      }
+//    }else 
+//      Tone.noTone();
+
+    //Tone.noTone();
+
+    Tone.disableTimer(2);
 //    *timer2_pin_port &= ~(timer2_pin_mask);  // keep pin low after stop
   }
-}
+}*/
 
 
 //#if defined(__AVR_ATmega1280__) || defined(__AVR_ATmega2560__)
 
-
+#if 0
 ISR(TIMER3_COMPA_vect)
 {
   if (timer3_toggle_count != 0)
@@ -491,19 +503,20 @@ ISR(TIMER3_COMPA_vect)
   }
   else
   {
-    if (Tone.isPlaying())
+/*    if (Tone.isPlaying())
     {
       if (!Tone.pushNextNote())
       {
           Tone.abortPlay();
       }
     }else 
-      Tone.noTone();
+      Tone.noTone();*/
 
-//    disableTimer(3);
+    Tone.disableTimer(3);
 //    *timer3_pin_port &= ~(timer3_pin_mask);  // keep pin low after stop
   }
 }
+#endif
 
 #if 0
 
@@ -705,7 +718,7 @@ bool ToneEx::pushNextNote()
 
 
       //delay(duration);
-	  _delay_ms(_duration);
+	  delay(_duration);
         noTone();
     }
     else
@@ -713,7 +726,7 @@ bool ToneEx::pushNextNote()
       //very low frequency just for 'playing' pauses as we need to keep timer running
       //tone(10000, _duration);
           noTone();  
-	  _delay_ms(_duration);
+	  delay(_duration);
     }
 //    return true;
   }

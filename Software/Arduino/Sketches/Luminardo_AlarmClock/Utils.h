@@ -13,7 +13,7 @@
 
 extern MVFD_16S8D vfd;
 
-void serial_print_p(const prog_char str[])
+void serial_print_p(const char str[])
 {
   char c;
   if(!str) return;
@@ -21,13 +21,13 @@ void serial_print_p(const prog_char str[])
     Serial.write(c);
 }
 
-void serial_println_p(const prog_char str[])
+void serial_println_p(const char str[])
 {
   serial_print_p(str);
   Serial.println();
 }
 
-void vfd_print_p(const prog_char str[])
+void vfd_print_p(const char str[])
 {
   char c;
   if(!str) return;

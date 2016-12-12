@@ -13,7 +13,7 @@
 
 #define STD_DISP_TIME 3
 #define SECONDS_IN_ACTIVE_MODE 180
-#define MAIN_LOOP_DELAY 200
+#define MAIN_LOOP_DELAY 100
 #define ONE_SEC_IN_MAIN_LOOPS (1000 / MAIN_LOOP_DELAY)
 #define RCCMD_UPDATE_DELAY 1000
 #define RCCMD_DEBOUNCER 300
@@ -34,6 +34,8 @@
 #define DEF_YEAR 0x2012
 #define MIN_SECONDS 0
 
+#define DS1338_USER_AREA 8
+
 const PROGMEM uint8_t MONTHS[12][3] = {
   {
     'J','A','N'  }
@@ -48,7 +50,7 @@ const PROGMEM uint8_t MONTHS[12][3] = {
     'A','P','R'  }
   ,
   {
-    'M','A','Y'  }
+    'M','A','I'  }
   ,
   {
     'J','U','N'  }
@@ -63,24 +65,24 @@ const PROGMEM uint8_t MONTHS[12][3] = {
     'S','E','P'  }
   ,
   {
-    'O','C','T'  }
+    'O','K','T'  }
   ,
   {
     'N','O','V'  }
   ,
   {
-    'D','E','C'  }
+    'D','E','Z'  }
 };
 
-const PROGMEM char MON[] = "MONDAY ";
-const PROGMEM char TUE[] = "TUESDAY";
-const PROGMEM char WED[] = "WED-DAY";
-const PROGMEM char THU[] = "THU-DAY";
-const PROGMEM char FRI[] = "FRIDAY ";
-const PROGMEM char SAT[] = "SAT-DAY";
-const PROGMEM char SUN[] = "SUNDAY ";
+const char MON[] PROGMEM = " MONTAG ";
+const char TUE[] PROGMEM = "DIENSTAG";
+const char WED[] PROGMEM = "MITTWOCH";
+const char THU[] PROGMEM = "DONNERST";
+const char FRI[] PROGMEM = "FREITAG ";
+const char SAT[] PROGMEM = "SONNABNT";
+const char SUN[] PROGMEM = "SONNTAG ";
 
-static PGM_P DAYSOFWEEK[] PROGMEM = {
+const char* const DAYSOFWEEK[] PROGMEM = {
   MON,
   TUE,
   WED,
@@ -99,6 +101,7 @@ enum enum_SysState
   sysExtTempDisp,
   sysIntTempDisp,
   sysDateDisp,
+  sysAlarmDisp,
   sysSetHours,
   sysSetMinutes,
   sysResetSeconds,
@@ -106,7 +109,9 @@ enum enum_SysState
   sysSetMonth,
   sysSetDay,
   sysSetDayOfWeek,
-  sysSetAlarm,
+  sysSetAlarmHours,
+  sysSetAlarmMinutes,
+  sysSetAlarmState,  
   sysIntroEffect,
   sysStandby,
   sysWaitForSetup,
@@ -128,6 +133,14 @@ typedef struct struct_EepromParams
   uint32_t rcAction_Settings_Code;
 } 
 EepromParamsType;
+
+typedef struct struct_Alarm
+{  
+  uint8_t minutes;
+  uint8_t hours;
+  bool is_active;
+} AlarmType;
+
 
 #endif
 

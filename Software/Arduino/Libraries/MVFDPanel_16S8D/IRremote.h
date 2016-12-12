@@ -59,8 +59,9 @@ class IRrecv
 public:
   IRrecv();
   int decode(decode_results *results);
-  void enableIRIn(int recvpin);
+  void enableIRIn(int recvpin, int spkrpin);
   void resume();
+  void spkrOn(uint16_t toggleCnt);
 private:
   // These are called by decode
   int getRClevel(decode_results *results, int *offset, int *used, int t1);
@@ -68,6 +69,7 @@ private:
   long decodeSony(decode_results *results);
   long decodeRC5(decode_results *results);
   long decodeRC6(decode_results *results);
+
 } 
 ;
 

@@ -137,14 +137,14 @@
 
 #define AVAILABLE_TONE_PINS 1
 
-const uint8_t PROGMEM tone_pin_to_timer_PGM[] = { 2 /*, 3, 4, 5, 1, 0 */ };
+const uint8_t PROGMEM tone_pin_to_timer_PGM[] = { 3 /*, 3, 4, 5, 1, 0 */ };
 static uint8_t tone_pins[AVAILABLE_TONE_PINS] = { 255 /*, 255, 255, 255, 255, 255 */ };
 
 #elif defined(__AVR_ATmega8__)
 
 #define AVAILABLE_TONE_PINS 1
 
-const uint8_t PROGMEM tone_pin_to_timer_PGM[] = { 2 /*, 1 */ };
+const uint8_t PROGMEM tone_pin_to_timer_PGM[] = { 3 /*, 1 */ };
 static uint8_t tone_pins[AVAILABLE_TONE_PINS] = { 255 /*, 255 */ };
 
 #else
@@ -153,7 +153,7 @@ static uint8_t tone_pins[AVAILABLE_TONE_PINS] = { 255 /*, 255 */ };
 #define OCTAVE_OFFSET 0
 
 // Leave timer 0 to last.
-const uint8_t PROGMEM tone_pin_to_timer_PGM[] = { 2 /*, 1, 0 */ };
+const uint8_t PROGMEM tone_pin_to_timer_PGM[] = { 3 /*, 1, 0 */ };
 static uint8_t tone_pins[AVAILABLE_TONE_PINS] = { 255 /*, 255, 255 */ };
 
 #endif
@@ -215,9 +215,9 @@ class ToneEx
         void abortPlay();
         void playRtttl(char *p);
         bool pushNextNote();
+        void disableTimer(uint8_t _timer);
 
 protected: 
-        void disableTimer(uint8_t _timer);
 
         byte _default_dur;
         byte _default_oct;

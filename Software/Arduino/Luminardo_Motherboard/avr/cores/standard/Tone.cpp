@@ -105,7 +105,7 @@ static uint8_t tone_pins[AVAILABLE_TONE_PINS] = { 255 /*, 255 */ };
 #define AVAILABLE_TONE_PINS 1
 
 // Leave timer 0 to last.
-const uint8_t PROGMEM tone_pin_to_timer_PGM[] = { 2 /*, 1, 0 */ };
+const uint8_t PROGMEM tone_pin_to_timer_PGM[] = { 3 /*, 1, 0 */ };
 static uint8_t tone_pins[AVAILABLE_TONE_PINS] = { 255 /*, 255, 255 */ };
 
 #endif
@@ -545,7 +545,7 @@ ISR(TIMER1_COMPA_vect)
 
 
 //#if defined(__AVR_ATmega1280__) || defined(__AVR_ATmega2560__)
-#if 0
+//#if 0
 
 ISR(TIMER3_COMPA_vect)
 {
@@ -559,11 +559,13 @@ ISR(TIMER3_COMPA_vect)
   }
   else
   {
-    disableTimer(3);
-    *timer3_pin_port &= ~(timer3_pin_mask);  // keep pin low after stop
+    noTone(tone_pins[0]);
+    //disableTimer(3);
+    //*timer3_pin_port &= ~(timer3_pin_mask);  // keep pin low after stop
   }
 }
 
+#if 0
 ISR(TIMER4_COMPA_vect)
 {
   if (timer4_toggle_count != 0)

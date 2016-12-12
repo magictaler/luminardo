@@ -8,13 +8,14 @@
  This example code is in the public domain.
  */
 
+#define LUMINARDO_REV 2 
+
 #include <Board.h>                       //Generic Luminardo definitions
+#include <avr/pgmspace.h>
+#include <avr/eeprom.h>
 #include <DS1338.h>                      //RTC
 #include <OneWire.h>                     //OneWire temperature sensor
 #include <MVFDPanel_16S8D.h>             //VFD display
-#include <avr/pgmspace.h>
-#include <avr/eeprom.h>
-#include <util/delay.h>
 #include "AlarmClock.h"                  //AlarmClock specific definitions
 #include "Messages.h"                    //Collection of string constants
 #include "Utils.h"                       //Conversion utils and helpers
@@ -28,18 +29,27 @@ VFD_SHDN_PIN, VFD_PWR_EN_PIN);           //VFD display
 
 OneWire ds(TEMP_SNSR_PIN);               //DS18B20 - a 1Wire temperature sensor from Dallas Semiconductor
 volatile uint8_t pirEvent;  
-volatile uint8_t redValue;               //current red value for front LED
-volatile uint8_t greenValue;             //current green value for front LED
-volatile uint8_t blueValue;              //current blue value for front LED
-volatile uint8_t sysState;               //current system state (mode)
-volatile uint8_t stateCntr;              //counter for displaying current state (in sec) - when becomes
-volatile uint16_t mainLoopCntr;
+
+uint8_t redValue;                        //current red value for front LED
+uint8_t greenValue;                      //current green value for front LED
+uint8_t blueValue;                       //current blue value for front LED
+bool redValueUp;
+bool greenValueUp;
+bool blueValueUp;
+
+uint8_t sysState;                        //current system state (mode)
+uint8_t stateCntr;                       //counter for displaying current state (in sec) - when becomes
+uint16_t mainLoopCntr;
 //zero display state changes to the next one
-volatile uint8_t dsState;                //temperature sensor state (to avoid explicit usage of delays)
-volatile RtcTimeType rtc;                //current time
-volatile float temperature;              //current temperature
-volatile uint8_t actModeTimer;           //seconds remaining before going to standby mode
+uint8_t dsState;                         //temperature sensor state (to avoid explicit usage of delays)
+RtcTimeType rtc;                         //current time
+AlarmType alarm;                         //current alarm
+float temperature;                       //current temperature
+uint8_t actModeTimer;                    //seconds remaining before going to standby mode
 EepromParamsType eepromParams EEMEM;     //RC keys allocations
+uint8_t dsAddr[8];  //temperature sensor address
+uint8_t dsData[12]; //temperature sensor data buffer
+uint8_t alarmedSec;
 
 void switchVFD(uint8_t state)
 {
@@ -57,6 +67,8 @@ void switchVFD(uint8_t state)
 void setup() {
   Serial.begin(57600);  
 
+//  shortBeep();  
+
   //Initialize RTC
   rtc.year = -1;
   if (RTClock.init() == 0)
@@ -73,13 +85,13 @@ void setup() {
   //Initialize VFD panel
   vfd.initLED(VFD_R_PIN, VFD_G_PIN, VFD_B_PIN);
   vfd.initLightSensor(VFD_LIGHT_SNR_PIN);
-  vfd.initTone(VFD_SPRK_PIN);
-  vfd.initIR_RC(VFD_IR_REC_PIN);
+  //vfd.initTone(VFD_SPRK_PIN);
+  vfd.initIR_RC(VFD_IR_REC_PIN, VFD_SPRK_PIN);
 
   redValue = 0;
-  greenValue = 0;
+  greenValue = 127;
   blueValue = 0;
-
+  
   vfd.setLED(redValue, greenValue, blueValue);
 
   pinMode(VFD_DATAO_PIN, INPUT);
@@ -98,14 +110,72 @@ void setup() {
   EICRA |= (1 << ISC21) | (1 << ISC20);
   EIMSK |= (1 << INT2);
   pirEvent = false;
+
+  RestoreAlarm();
+
+  vfd.spkrOn(10000);
 }
 
 void toStandBy()
 {
   cli();
   sysState = sysStandby;
+  vfd.setLED(0, 0, 0);
   vfd.standby(true);
   sei();
+}
+
+void pulseLED(uint8_t &ledVal, bool &ledValueUp)
+{
+  if (ledVal != 0)
+  {
+      if (ledValueUp)
+      {
+          if (ledVal >= 250)
+          {
+              ledVal -= 5;
+              ledValueUp = false;
+          } else ledVal += 5;
+      }else
+      {
+          if (ledVal <= 6)
+          {
+              ledVal += 5;
+              ledValueUp = true;
+          } else ledVal -= 5;
+      }
+  }
+}
+
+void pulseLEDs()
+{
+   if (sysState == sysTimeDisp || sysState == sysDayOfWeekDisp || sysState == sysExtTempDisp || sysState == sysIntTempDisp || sysState == sysDateDisp)
+   { 
+      blueValue++;
+      if (blueValue > 60)
+      {
+          blueValue = 0;  
+      }
+      if (blueValue < 30)
+      {
+         vfd.setLED(blueValue/1.17, blueValue/8.6, blueValue);
+      }else
+      {
+         uint8_t newVal = (30 - (blueValue - 30));
+         vfd.setLED(newVal/1.17, newVal/8.6, newVal);
+      }
+   }else if (sysState == sysSetHours || sysState == sysSetMinutes || sysState == sysResetSeconds || sysState == sysSetYear || sysState == sysSetMonth ||
+       sysState == sysSetDay || sysState == sysSetDayOfWeek || sysState == sysSetAlarmHours || sysState == sysSetAlarmMinutes || sysState == sysSetAlarmState)
+   {
+       vfd.setLED(127, 127, 0);
+   }else if (sysState == sysWaitForSetup || sysState == sysRCSetupLeft || sysState == sysRCSetupRight || sysState == sysRCSetupUp || sysState == sysRCSetupDown ||
+       sysState == sysRCSetupSettings)
+   {
+       vfd.setLED(0, 255, 0);
+   }else if (sysState == sysStandby)
+   {
+       ;
+   }
 }
 
 uint8_t isCodeEqual(decode_results *results, uint32_t* addr)
@@ -118,6 +188,40 @@ uint8_t isCodeEqual(decode_results *results, uint32_t* addr)
   eeprom_busy_wait();
   uint32_t rcCmd = eeprom_read_dword(addr);
   return (rcCmd == results->value);
+}
+
+void printStoredRCComs()
+{
+  eeprom_busy_wait();
+  uint16_t rcType = eeprom_read_word(&eepromParams.rcType);
+  Serial.print(F("RCType")); 
+  Serial.println(rcType, HEX); 
+
+  eeprom_busy_wait();
+  uint32_t rcCmd = eeprom_read_dword(&eepromParams.rcAction_Left_Code);
+  Serial.print(F("rcAction_Left_Code")); 
+  Serial.println(rcCmd, HEX); 
+
+  eeprom_busy_wait();
+  rcCmd = eeprom_read_dword(&eepromParams.rcAction_Right_Code);
+  Serial.print(F("rcAction_Right_Code")); 
+  Serial.println(rcCmd, HEX); 
+
+  eeprom_busy_wait();
+  rcCmd = eeprom_read_dword(&eepromParams.rcAction_Up_Code);
+  Serial.print(F("rcAction_Up_Code")); 
+  Serial.println(rcCmd, HEX); 
+
+  eeprom_busy_wait();
+  rcCmd = eeprom_read_dword(&eepromParams.rcAction_Down_Code);
+  Serial.print(F("rcAction_Down_Code")); 
+  Serial.println(rcCmd, HEX); 
+
+  eeprom_busy_wait();
+  rcCmd = eeprom_read_dword(&eepromParams.rcAction_Settings_Code);
+  Serial.print(F("rcAction_Settings_Code")); 
+  Serial.println(rcCmd, HEX); 
+  
 }
 
 void updateRCCmdInFlash(decode_results *results, uint32_t* addr)
@@ -138,8 +242,12 @@ void updateRCCmdInFlash(decode_results *results, uint32_t* addr)
     eeprom_write_dword(addr, results->value);
   }
 
-  _delay_ms(RCCMD_UPDATE_DELAY);
+  printStoredRCComs();
+
+  delay(RCCMD_UPDATE_DELAY);
 }
+
+
 
 void defaultClockSettings()
 {
@@ -155,6 +263,28 @@ void defaultClockSettings()
     rtc.year = DEF_YEAR;
     RTClock.setTime((RtcTimeType*)&rtc);
   }
+}
+
+
+void dispAlarm()
+{
+  vfd.clearFrame();
+  vfd.print_f_p(ALRM);
+  bcdToVFD(binToBcd(alarm.hours), 4 * VFD_BYTES_PER_DIGIT, false, true);
+  bcdToVFD(binToBcd(alarm.minutes), 6 * VFD_BYTES_PER_DIGIT, true, false);
+  vfd.flipFrame();
+}
+
+void dispAlarmState()
+{
+  vfd.clearFrame();
+
+  if (alarm.is_active) 
+    vfd.print_f_p(ALRM_ON);
+  else 
+    vfd.print_f_p(ALRM_OFF);
+
+  vfd.flipFrame();
 }
 
 void dispTime()
@@ -214,6 +344,42 @@ void NoTempToVFD()
   vfd.write(SPACE_CHR);
 }
 
+void SaveAlarm()
+{
+  RTClock.writeBlock((uint8_t*)&alarm, DS1338_USER_AREA, sizeof(alarm));
+}
+
+void RestoreAlarm()
+{
+  RTClock.readBlock((uint8_t*)&alarm, DS1338_USER_AREA, sizeof(alarm));
+}
+
+void check4Alarm()
+{
+  if (alarm.is_active && binToBcd(alarm.hours) == rtc.hours && binToBcd(alarm.minutes) == rtc.minutes && sysState != sysAlarmDisp)
+  {
+    /*sysState = sysAlarmDisp;
+    stateCntr = STD_DISP_TIME * 2;
+    vfd.print_f_p(WAKEUP);
+    vfd.setFlashAttr(VFD_DIGITS, VFD_FLASH_ALL);
+    vfd.flipFrame();*/
+
+    sysState = sysAlarmDisp;
+    stateCntr = STD_DISP_TIME * 2;
+
+    alarmedSec = rtc.seconds;
+    vfd.spkrOn(10000);
+    
+    vfd.clearFrame();
+    bcdToVFD(rtc.hours, 2 * VFD_BYTES_PER_DIGIT, false, false);
+    bcdToVFD(rtc.minutes, 4 * VFD_BYTES_PER_DIGIT, true, false);
+    vfd.setFlashAttr(VFD_DIGITS, VFD_FLASH_ALL);
+    vfd.flipFrame();    
+
+    //Serial.println(F("Alarm!"));     
+  }
+}
+
 void IRDecode(decode_results *results) 
 {
   Serial.println((long)results->value, HEX);
@@ -223,7 +389,7 @@ void IRDecode(decode_results *results)
     sysState = sysRCSetupLeft;
     vfd.print_f_p(RC_LEFT);
     stateCntr = STD_DISP_TIME * 5;
-    _delay_ms(RCCMD_UPDATE_DELAY);
+    delay(RCCMD_UPDATE_DELAY);
   }
   else if (sysState == sysRCSetupLeft)
   {
@@ -246,6 +412,13 @@ void IRDecode(decode_results *results)
     stateCntr = STD_DISP_TIME * 5;
     updateRCCmdInFlash(results, &eepromParams.rcAction_Up_Code);
   }
+  else if (sysState == sysRCSetupDown)
+  {
+    sysState = sysRCSetupSettings;
+    vfd.print_f_p(RC_SETTINGS);
+    stateCntr = STD_DISP_TIME * 5;
+    updateRCCmdInFlash(results, &eepromParams.rcAction_Down_Code);
+  }
   else if (sysState == sysRCSetupSettings)
   {
     sysState = sysTimeDisp;
@@ -261,14 +434,152 @@ void IRDecode(decode_results *results)
   {
     if (isCodeEqual(results, &eepromParams.rcAction_Settings_Code))
     {
-      sysState = sysSetHours;
+      sysState = sysSetAlarmHours;
+      stateCntr = STD_DISP_TIME * 5;
+      dispAlarm();
+      vfd.setFlashAttr(RIGHT_DIGIT_IDX-4, 1);
+      vfd.setFlashAttr(RIGHT_DIGIT_IDX-5, 1);      
+      
+      /*sysState = sysSetHours;
       stateCntr = STD_DISP_TIME * 5;
       if (rtc.year == (uint16_t)-1) defaultClockSettings();
       dispTime();
       vfd.setFlashAttr(RIGHT_DIGIT_IDX, 1);
-      vfd.setFlashAttr(RIGHT_DIGIT_IDX-1, 1);
+      vfd.setFlashAttr(RIGHT_DIGIT_IDX-1, 1);*/
     }
   }
+  else if (sysState == sysSetAlarmHours)
+  {
+    stateCntr = STD_DISP_TIME * 5;
+    if (isCodeEqual(results, &eepromParams.rcAction_Up_Code))
+    {
+      uint8_t hours = alarm.hours + 1;
+      if (hours > MAX_HOURS) hours = MIN_HOURS;
+      alarm.hours = hours;
+
+      SaveAlarm();
+
+  //Serial.print(F("rtc.hour: "));       
+  //Serial.println(hours, HEX); 
+      
+  //Serial.print(F("binToBcd(rtc.hour): "));       
+  //Serial.println(binToBcd(hours), HEX); 
+
+      dispAlarm();
+      delay(RCCMD_DEBOUNCER);
+    }
+    else if (isCodeEqual(results, &eepromParams.rcAction_Down_Code))
+    {
+      uint8_t hours = alarm.hours;
+      if (hours > MIN_HOURS) hours--; 
+      else hours = MAX_HOURS;
+      alarm.hours = hours;
+
+      SaveAlarm();
+      
+      dispAlarm();
+      delay(RCCMD_DEBOUNCER);
+    }
+    else if (isCodeEqual(results, &eepromParams.rcAction_Right_Code))
+    {
+      sysState = sysSetAlarmMinutes;
+      vfd.setFlashAttr(VFD_DIGITS, VFD_FLASH_NONE);
+      vfd.setFlashAttr(RIGHT_DIGIT_IDX-6, 1);
+      vfd.setFlashAttr(RIGHT_DIGIT_IDX-7, 1);
+      delay(RCCMD_DEBOUNCER);
+    }
+  }
+  else if (sysState == sysSetAlarmMinutes)
+  {
+    stateCntr = STD_DISP_TIME * 5;
+    if (isCodeEqual(results, &eepromParams.rcAction_Up_Code))
+    {
+      uint8_t minutes = alarm.minutes + 1;
+      if (minutes > MAX_MINUTES) minutes = MIN_MINUTES;
+      alarm.minutes = minutes;
+
+      SaveAlarm();
+      
+      dispAlarm();
+      delay(RCCMD_DEBOUNCER);
+    }
+    else if (isCodeEqual(results, &eepromParams.rcAction_Down_Code))
+    {
+      uint8_t minutes = alarm.minutes;
+      if (minutes > MIN_MINUTES) minutes--; 
+      else minutes = MAX_MINUTES;
+      alarm.minutes = minutes;
+
+      SaveAlarm();
+      
+      dispAlarm();
+      delay(RCCMD_DEBOUNCER);
+    }
+    else if (isCodeEqual(results, &eepromParams.rcAction_Left_Code))
+    {
+      sysState = sysSetAlarmHours;
+      vfd.setFlashAttr(VFD_DIGITS, VFD_FLASH_NONE);
+      vfd.setFlashAttr(RIGHT_DIGIT_IDX-4, 1);
+      vfd.setFlashAttr(RIGHT_DIGIT_IDX-5, 1);
+      delay(RCCMD_DEBOUNCER);
+    }
+    else if (isCodeEqual(results, &eepromParams.rcAction_Right_Code))
+    {
+      /*sysState = sysSetHours;
+      stateCntr = STD_DISP_TIME * 5;
+      if (rtc.year == (uint16_t)-1) defaultClockSettings();
+      dispTime();
+      vfd.setFlashAttr(RIGHT_DIGIT_IDX, 1);
+      vfd.setFlashAttr(RIGHT_DIGIT_IDX-1, 1);*/
+
+      sysState = sysSetAlarmState;
+      stateCntr = STD_DISP_TIME * 5;
+      dispAlarmState();
+      vfd.setFlashAttr(RIGHT_DIGIT_IDX-5, 1);
+      vfd.setFlashAttr(RIGHT_DIGIT_IDX-6, 1);
+      vfd.setFlashAttr(RIGHT_DIGIT_IDX-7, 1);      
+    }
+   
+  }
+  else if (sysState == sysSetAlarmState)
+  {
+    stateCntr = STD_DISP_TIME * 5;
+    if (isCodeEqual(results, &eepromParams.rcAction_Up_Code) || isCodeEqual(results, &eepromParams.rcAction_Down_Code))
+    //if (isCodeEqual(results, &eepromParams.rcAction_Up_Code))
+    {
+      if (alarm.is_active) alarm.is_active = false;
+      else alarm.is_active = true;
+      
+
+      SaveAlarm();
+
+      Serial.print(F("alarm.is_active: ")); 
+      Serial.println(alarm.is_active, HEX);       
+      
+      dispAlarmState();
+      delay(RCCMD_DEBOUNCER);
+    }
+    else if (isCodeEqual(results, &eepromParams.rcAction_Right_Code))
+    {
+      sysState = sysSetHours;
+      stateCntr = STD_DISP_TIME * 5;
+      if (rtc.year == (uint16_t)-1) defaultClockSettings();
+      dispTime();
+      vfd.setFlashAttr(VFD_DIGITS, VFD_FLASH_NONE);
+      vfd.setFlashAttr(RIGHT_DIGIT_IDX, 1);
+      vfd.setFlashAttr(RIGHT_DIGIT_IDX-1, 1);      
+    }
+    else if (isCodeEqual(results, &eepromParams.rcAction_Left_Code))
+    {
+      sysState = sysSetAlarmHours;
+      stateCntr = STD_DISP_TIME * 5;
+      dispAlarm();
+      vfd.setFlashAttr(VFD_DIGITS, VFD_FLASH_NONE);      
+      vfd.setFlashAttr(RIGHT_DIGIT_IDX-4, 1);
+      vfd.setFlashAttr(RIGHT_DIGIT_IDX-5, 1);      
+    }
+  }
+  
   else if (sysState == sysSetHours)
   {
     stateCntr = STD_DISP_TIME * 5;
@@ -282,7 +593,7 @@ void IRDecode(decode_results *results)
         RTClock.setTime((RtcTimeType*)&rtc);
 
       dispTime();
-      _delay_ms(RCCMD_DEBOUNCER);
+      delay(RCCMD_DEBOUNCER);
     }
     else if (isCodeEqual(results, &eepromParams.rcAction_Down_Code))
     {
@@ -295,7 +606,7 @@ void IRDecode(decode_results *results)
         RTClock.setTime((RtcTimeType*)&rtc);
 
       dispTime();
-      _delay_ms(RCCMD_DEBOUNCER);
+      delay(RCCMD_DEBOUNCER);
     }
     else if (isCodeEqual(results, &eepromParams.rcAction_Right_Code))
     {
@@ -303,7 +614,25 @@ void IRDecode(decode_results *results)
       vfd.setFlashAttr(VFD_DIGITS, VFD_FLASH_NONE);
       vfd.setFlashAttr(RIGHT_DIGIT_IDX-2, 1);
       vfd.setFlashAttr(RIGHT_DIGIT_IDX-3, 1);
-      _delay_ms(RCCMD_DEBOUNCER);
+      delay(RCCMD_DEBOUNCER);
+    }
+    else if (isCodeEqual(results, &eepromParams.rcAction_Left_Code))
+    {
+      /*
+      sysState = sysSetAlarmHours;
+      stateCntr = STD_DISP_TIME * 5;
+      dispAlarm();
+      vfd.setFlashAttr(VFD_DIGITS, VFD_FLASH_NONE);      
+      vfd.setFlashAttr(RIGHT_DIGIT_IDX-4, 1);
+      vfd.setFlashAttr(RIGHT_DIGIT_IDX-5, 1);      
+      */
+      sysState = sysSetAlarmState;
+      stateCntr = STD_DISP_TIME * 5;
+      dispAlarmState();
+      vfd.setFlashAttr(VFD_DIGITS, VFD_FLASH_NONE);      
+      vfd.setFlashAttr(RIGHT_DIGIT_IDX-5, 1);
+      vfd.setFlashAttr(RIGHT_DIGIT_IDX-6, 1);
+      vfd.setFlashAttr(RIGHT_DIGIT_IDX-7, 1);      
     }
   }
   else if (sysState == sysSetMinutes)
@@ -319,7 +648,7 @@ void IRDecode(decode_results *results)
         RTClock.setTime((RtcTimeType*)&rtc);
 
       dispTime();
-      _delay_ms(RCCMD_DEBOUNCER);
+      delay(RCCMD_DEBOUNCER);
     }
     else if (isCodeEqual(results, &eepromParams.rcAction_Down_Code))
     {
@@ -332,7 +661,7 @@ void IRDecode(decode_results *results)
         RTClock.setTime((RtcTimeType*)&rtc);
 
       dispTime();
-      _delay_ms(RCCMD_DEBOUNCER);
+      delay(RCCMD_DEBOUNCER);
     }
     else if (isCodeEqual(results, &eepromParams.rcAction_Left_Code))
     {
@@ -340,7 +669,7 @@ void IRDecode(decode_results *results)
       vfd.setFlashAttr(VFD_DIGITS, VFD_FLASH_NONE);
       vfd.setFlashAttr(RIGHT_DIGIT_IDX, 1);
       vfd.setFlashAttr(RIGHT_DIGIT_IDX-1, 1);
-      _delay_ms(RCCMD_DEBOUNCER);
+      delay(RCCMD_DEBOUNCER);
     }
     else if (isCodeEqual(results, &eepromParams.rcAction_Right_Code))
     {
@@ -348,7 +677,7 @@ void IRDecode(decode_results *results)
       vfd.setFlashAttr(VFD_DIGITS, VFD_FLASH_NONE);
       vfd.setFlashAttr(RIGHT_DIGIT_IDX-4, 1);
       vfd.setFlashAttr(RIGHT_DIGIT_IDX-5, 1);
-      _delay_ms(RCCMD_DEBOUNCER);
+      delay(RCCMD_DEBOUNCER);
     }
   }
   else if (sysState == sysResetSeconds)
@@ -362,7 +691,7 @@ void IRDecode(decode_results *results)
         RTClock.setTime((RtcTimeType*)&rtc);
 
       dispTime();
-      _delay_ms(RCCMD_DEBOUNCER);
+      delay(RCCMD_DEBOUNCER);
     }
     else if (isCodeEqual(results, &eepromParams.rcAction_Left_Code))
     {
@@ -370,7 +699,7 @@ void IRDecode(decode_results *results)
       vfd.setFlashAttr(VFD_DIGITS, VFD_FLASH_NONE);
       vfd.setFlashAttr(RIGHT_DIGIT_IDX-2, 1);
       vfd.setFlashAttr(RIGHT_DIGIT_IDX-3, 1);
-      _delay_ms(RCCMD_DEBOUNCER);
+      delay(RCCMD_DEBOUNCER);
     }
     else if (isCodeEqual(results, &eepromParams.rcAction_Right_Code))
     {
@@ -391,7 +720,7 @@ void IRDecode(decode_results *results)
         RTClock.setTime((RtcTimeType*)&rtc);
 
       dispDayOfWeek();
-      _delay_ms(RCCMD_DEBOUNCER);
+      delay(RCCMD_DEBOUNCER);
     }
     if (isCodeEqual(results, &eepromParams.rcAction_Down_Code))
     {
@@ -402,7 +731,7 @@ void IRDecode(decode_results *results)
         RTClock.setTime((RtcTimeType*)&rtc);
 
       dispDayOfWeek();
-      _delay_ms(RCCMD_DEBOUNCER);
+      delay(RCCMD_DEBOUNCER);
     }
     else if (isCodeEqual(results, &eepromParams.rcAction_Left_Code))
     {
@@ -410,7 +739,7 @@ void IRDecode(decode_results *results)
       vfd.setFlashAttr(VFD_DIGITS, VFD_FLASH_NONE);
       vfd.setFlashAttr(RIGHT_DIGIT_IDX-4, 1);
       vfd.setFlashAttr(RIGHT_DIGIT_IDX-5, 1);
-      _delay_ms(RCCMD_DEBOUNCER);
+      delay(RCCMD_DEBOUNCER);
     }
     else if (isCodeEqual(results, &eepromParams.rcAction_Right_Code))
     {
@@ -435,7 +764,7 @@ void IRDecode(decode_results *results)
         RTClock.setTime((RtcTimeType*)&rtc);
 
       dispDate();
-      _delay_ms(RCCMD_DEBOUNCER);
+      delay(RCCMD_DEBOUNCER);
     }
     if (isCodeEqual(results, &eepromParams.rcAction_Down_Code))
     {
@@ -448,14 +777,14 @@ void IRDecode(decode_results *results)
         RTClock.setTime((RtcTimeType*)&rtc);
 
       dispDate();
-      _delay_ms(RCCMD_DEBOUNCER);
+      delay(RCCMD_DEBOUNCER);
     }
     else if (isCodeEqual(results, &eepromParams.rcAction_Left_Code))
     {
       sysState = sysSetDayOfWeek;
       vfd.setFlashAttr(VFD_DIGITS, VFD_FLASH_ALL);
       dispDayOfWeek();
-      _delay_ms(RCCMD_DEBOUNCER);
+      delay(RCCMD_DEBOUNCER);
     }
     else if (isCodeEqual(results, &eepromParams.rcAction_Right_Code))
     {
@@ -465,7 +794,7 @@ void IRDecode(decode_results *results)
       vfd.setFlashAttr(RIGHT_DIGIT_IDX-4, 1);
       vfd.setFlashAttr(RIGHT_DIGIT_IDX-5, 1);
       dispDate();
-      _delay_ms(RCCMD_DEBOUNCER);
+      delay(RCCMD_DEBOUNCER);
     }
   }
   else if (sysState == sysSetMonth)
@@ -481,7 +810,7 @@ void IRDecode(decode_results *results)
         RTClock.setTime((RtcTimeType*)&rtc);
 
       dispDate();
-      _delay_ms(RCCMD_DEBOUNCER);
+      delay(RCCMD_DEBOUNCER);
     }
     if (isCodeEqual(results, &eepromParams.rcAction_Down_Code))
     {
@@ -494,7 +823,7 @@ void IRDecode(decode_results *results)
         RTClock.setTime((RtcTimeType*)&rtc);
 
       dispDate();
-      _delay_ms(RCCMD_DEBOUNCER);
+      delay(RCCMD_DEBOUNCER);
     }
     else if (isCodeEqual(results, &eepromParams.rcAction_Left_Code))
     {
@@ -503,7 +832,7 @@ void IRDecode(decode_results *results)
       vfd.setFlashAttr(RIGHT_DIGIT_IDX, 1);
       vfd.setFlashAttr(RIGHT_DIGIT_IDX-1, 1);
       dispDate();
-      _delay_ms(RCCMD_DEBOUNCER);
+      delay(RCCMD_DEBOUNCER);
     }
     else if (isCodeEqual(results, &eepromParams.rcAction_Right_Code))
     {
@@ -542,8 +871,6 @@ SIGNAL(INT2_vect)
 
 // the loop routine runs over and over again forever:
 void loop() {
-  uint8_t dsAddr[8];  //temperature sensor address
-  uint8_t dsData[12]; //temperature sensor data buffer
 
   while (1)
   {
@@ -590,6 +917,9 @@ void loop() {
       case sysSetDayOfWeek:
       case sysSetMonth:
       case sysSetDay:
+      case sysSetAlarmHours:
+      case sysSetAlarmMinutes:
+      case sysSetAlarmState:
 
         if (stateCntr == 0)
         {
@@ -606,8 +936,37 @@ void loop() {
           {
             dispTime();
           }
-          vfd.flipFlashState();
-          vfd.flipFrame();
+
+          if (mainLoopCntr % 2 == 0)
+          {
+              vfd.flipFlashState();
+              vfd.flipFrame();
+          }
+        }
+        break;
+
+      case sysAlarmDisp:
+        {
+          if (rtc.hours != binToBcd(alarm.hours) || rtc.minutes != binToBcd(alarm.minutes))
+          {
+              sysState = sysTimeDisp;
+              stateCntr = STD_DISP_TIME;
+              vfd.setFlashAttr(VFD_DIGITS, VFD_FLASH_NONE);
+              //TODO: disable alarm
+          }else
+          {
+              if (alarmedSec != rtc.seconds)
+              {
+                vfd.spkrOn(10000);
+                alarmedSec = rtc.seconds;
+              }
+          }
+
+          if (mainLoopCntr % 2 == 0)
+          {
+             vfd.flipFlashState();
+             vfd.flipFrame();
+          }
         }
         break;
 
@@ -621,6 +980,8 @@ void loop() {
             sysState = sysDateDisp;
             stateCntr = STD_DISP_TIME;
           }
+
+          check4Alarm();
         }
         break;
 
@@ -636,6 +997,7 @@ void loop() {
             stateCntr = STD_DISP_TIME;
           }
         }
+        check4Alarm();
         break;
 
       case sysExtTempDisp:
@@ -656,10 +1018,11 @@ void loop() {
           sysState = sysTimeDisp;
           stateCntr = STD_DISP_TIME;
         }
+        check4Alarm();        
         break;
 
       case sysIntTempDisp:
-
+        check4Alarm();          
         break;
 
       case sysDateDisp:
@@ -673,6 +1036,7 @@ void loop() {
           sysState = sysDayOfWeekDisp;
           stateCntr = STD_DISP_TIME;
         }
+        check4Alarm();                  
         break;
 
       case sysIntroEffect:
@@ -751,6 +1115,9 @@ void loop() {
         Serial.write('C');
       }
       Serial.println();
+
+      Serial.print("Photocell: ");
+      Serial.println((long)vfd.getLightSensorVal(), DEC);
     }
 
     //Handling RC commands
@@ -775,7 +1142,7 @@ void loop() {
       while (brightness != 0)
       {            
         vfd.displayOnCmd(brightness--);
-        _delay_ms(500);
+        delay(500);
       }
       toStandBy();
     }
@@ -793,11 +1160,16 @@ void loop() {
       }
     }
 
-    if (sysState == sysGreetings)
-      longBeepAsync();
+    //if (sysState == sysGreetings)
+    //  longBeepAsync();
 
     //sleep_mode();
-    _delay_ms(MAIN_LOOP_DELAY);
+    delay(MAIN_LOOP_DELAY);
+
+    if (sysState != sysStandby)
+    {
+        pulseLEDs();
+    }
 
     mainLoopCntr++;
     if (mainLoopCntr % ONE_SEC_IN_MAIN_LOOPS == 0)

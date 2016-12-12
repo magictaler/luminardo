@@ -17,6 +17,14 @@
 
 volatile irparams_t irparams;
 
+//Speaker
+volatile uint8_t *spkr_timer3_pin_port;
+volatile uint8_t spkr_timer3_pin_mask;
+volatile uint8_t spkr_cntr;
+volatile bool spkr_on;
+volatile uint16_t timer4_toggle_count;
+
+
 // These versions of MATCH, MATCH_MARK, and MATCH_SPACE are only for debugging.
 // To use them, set DEBUG in IRremoteInt.h
 // Normally macros are used for efficiency
@@ -69,8 +77,15 @@ IRrecv::IRrecv()
 {
 }
 
+void IRrecv::spkrOn(uint16_t toggleCnt)
+{
+    cli();
+    timer4_toggle_count = toggleCnt;
+    sei();
+}
+
 // initialization
-void IRrecv::enableIRIn(int recvpin) {
+void IRrecv::enableIRIn(int recvpin, int spkrpin) {
   cli();
 
 //  irparams.recvpin = recvpin;
@@ -80,7 +95,7 @@ void IRrecv::enableIRIn(int recvpin) {
   irparams.blinkflag = 0;
 
   //Timer2 Overflow Interrupt Enable
-#if defined(__AVR_ATmega328P__) || defined(__AVR_ATmega1284P__)
+//#if defined(__AVR_ATmega328P__) || defined(__AVR_ATmega1284P__)
   // setup pulse clock timer interrupt
   TCCR3A = 0;
   //Prescale /8 (16M/8 = 0.5 microseconds per tick)
@@ -90,7 +105,7 @@ void IRrecv::enableIRIn(int recvpin) {
 
   TIMSK3 |= _BV(TOIE3);
   //cbi(TIMSK2, OCIE2A);
-#else
+//#else
   // setup pulse clock timer interrupt
 //  TCCR2 = 0;
   //Prescale /8 (16M/8 = 0.5 microseconds per tick)
@@ -100,7 +115,7 @@ void IRrecv::enableIRIn(int recvpin) {
 
 //  sbi(TIMSK, TOIE2);
 //  cbi(TIMSK, OCIE2);
-#endif
+//#endif
 
   RESET_TIMER3;
 
@@ -112,6 +127,14 @@ void IRrecv::enableIRIn(int recvpin) {
 
   // set pin modes
   pinMode(recvpin, INPUT);
+
+
+//speaker pin
+  pinMode(spkrpin, OUTPUT);
+  spkr_timer3_pin_port = portOutputRegister(digitalPinToPort(spkrpin));
+  spkr_timer3_pin_mask = digitalPinToBitMask(spkrpin);
+  spkr_cntr = 0;
+  spkr_on = false;
 }
 
 // TIMER2 interrupt code to collect raw data.
@@ -189,6 +212,24 @@ ISR(TIMER3_OVF_vect)
 	//LED_YELLOW_0;
     }
   }*/
+  
+  if (timer4_toggle_count != 0)
+  {
+    //if (spkr_on)
+    {
+        if (spkr_cntr != 20) 
+            spkr_cntr++;
+        else
+        {
+            // toggle the pin
+            *spkr_timer3_pin_port ^= spkr_timer3_pin_mask;
+            spkr_cntr = 0;
+        }
+    }
+
+    if (timer4_toggle_count > 0)
+      timer4_toggle_count--;
+  }
 }
 
 void IRrecv::resume() {

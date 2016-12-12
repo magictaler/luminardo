@@ -90,6 +90,11 @@ void MVFD_16S8D::playTone(uint16_t freq, unsigned long duration)
     Tone.tone(freq, duration);
 }
 
+void MVFD_16S8D::spkrOn(uint16_t toggleCnt)
+{
+    irrecv.spkrOn(toggleCnt);
+}
+
 void MVFD_16S8D::playNoTone()
 {  
     Tone.noTone();
@@ -111,9 +116,9 @@ uint16_t MVFD_16S8D::getLightSensorVal()
     return analogRead(_lsnr);
 }
  
-void MVFD_16S8D::initIR_RC(uint8_t ir)
+void MVFD_16S8D::initIR_RC(uint8_t ir, uint8_t spkr)
 {
-    irrecv.enableIRIn(ir);
+    irrecv.enableIRIn(ir, spkr);
 }
 
 decode_results* MVFD_16S8D::getIR_RC_Code()
@@ -234,7 +239,7 @@ uint8_t MVFD_16S8D::write_f(uint8_t* buffer, uint8_t dstIndex, uint8_t len)
     return len;
 }
 
-void MVFD_16S8D::print_f_p(const prog_char str[])
+void MVFD_16S8D::print_f_p(const char str[])
 {
     char c;
     uint8_t idx = 0;
@@ -713,9 +718,9 @@ uint8_t MVFD_16S8D::scrollEffect()
     return false;
 }
 
-void MVFD_16S8D::initScroll_p(const prog_char str[])
+void MVFD_16S8D::initScroll_p(const char str[])
 {
-    _scrollPntr = (prog_char*)str;
+    _scrollPntr = (const char*)str;
 }
 
 uint8_t MVFD_16S8D::scrollStep( void )
@@ -725,7 +730,7 @@ uint8_t MVFD_16S8D::scrollStep( void )
     uint8_t digitsLeft = VFD_DIGITS;
     if(!_scrollPntr) return false;
 
-    prog_char* str = _scrollPntr;
+    const char* str = _scrollPntr;
 
     clearFrame();
 

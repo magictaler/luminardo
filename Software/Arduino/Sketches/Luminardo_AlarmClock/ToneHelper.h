@@ -22,6 +22,7 @@ void longBeepAsync()
     beepState == 5 || beepState == 6)
   {
     vfd.playTone(NOTE_FS7, 100);
+    //analogWrite(VFD_SPRK_PIN, 50);  
   }
 
   if (beepState < 7) beepState++;

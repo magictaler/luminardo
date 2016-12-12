@@ -80,7 +80,7 @@ class MVFD_16S8D : public Print
         uint16_t getLightSensorVal();
         decode_results* getIR_RC_Code();
         void resumeIR_RC();
-        void initIR_RC(uint8_t ir);
+        void initIR_RC(uint8_t ir, uint8_t spkr);
         void displayOnCmd(uint8_t dimming);
         void displayOffCmd();
         void setCur(uint8_t col);
@@ -95,7 +95,7 @@ class MVFD_16S8D : public Print
         //Transfer array to intermediate buffer
         uint8_t write_f(uint8_t* buffer, uint8_t dstIndex, uint8_t len);
         //Transfer string from program memory to intermediate buffer
-        void print_f_p(const prog_char str[]);
+        void print_f_p(const char str[]);
         //Transfer whole intermediate buffer to display
         void flipFrame();
         void flipFlashState();
@@ -119,8 +119,10 @@ class MVFD_16S8D : public Print
 
         uint8_t testStep();
 
-        void initScroll_p(const prog_char str[]);
+        void initScroll_p(const char str[]);
         uint8_t scrollStep();
+
+        void spkrOn(uint16_t toggleCnt);
 
 protected: 
         uint8_t _rotorState, _rled, _gled, _bled, _lsnr, _standby, _powerdown;
@@ -129,7 +131,7 @@ protected:
         uint8_t _vfdFrame[VFD_BYTES_PER_DIGIT * VFD_DIGITS];
 //        prog_char *scrollPntr;
         HT16515 driver;
-        prog_char *_scrollPntr;
+        const char *_scrollPntr;
         uint8_t _scrollLeadingIdx;
 };
 
